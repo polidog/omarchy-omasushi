@@ -1,0 +1,16 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate manifest.json
+        run: |
+          jq -e '.schemaVersion == 1 and .id == "polidog.omasushi"' manifest.json
+          jq -e '.kinds | index("bar-widget")' manifest.json
+          test -f "$(jq -r .entryPoints.barWidget manifest.json)"
