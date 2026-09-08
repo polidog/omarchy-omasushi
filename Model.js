@@ -1,6 +1,6 @@
 .pragma library
 
-// Runs `omasushi plan --json` with the PATH a login shell would have, so a
+// Runs `omasushi diff --json` with the PATH a login shell would have, so a
 // binary in ~/go/bin, ~/.local/bin or a mise-managed GOBIN is found even
 // when the shell was started before it was installed.
 var pathFix = 'export PATH="$HOME/go/bin:$HOME/.local/bin:$PATH"; '
@@ -8,7 +8,7 @@ var pathFix = 'export PATH="$HOME/go/bin:$HOME/.local/bin:$PATH"; '
 
 var planScript = pathFix
   + 'if ! command -v omasushi >/dev/null 2>&1; then echo \'{"missing":true}\'; exit 0; fi; '
-  + 'omasushi plan --json 2>/dev/null || echo \'{"error":true}\''
+  + 'omasushi diff --json 2>/dev/null || echo \'{"error":true}\''
 
 // Same PATH fix for the interactive commands run in a floating terminal.
 function terminalCommand(sub) {
@@ -16,12 +16,12 @@ function terminalCommand(sub) {
 }
 
 function parsePlan(text) {
-  var out = { missing: false, error: false, omakases: [], actions: [], extras: [] }
+  var out = { missing: false, error: false, packs: [], actions: [], extras: [] }
   try {
     var j = JSON.parse(text)
     if (j.missing) { out.missing = true; return out }
     if (j.error) { out.error = true; return out }
-    out.omakases = Array.isArray(j.omakases) ? j.omakases : []
+    out.packs = Array.isArray(j.packs) ? j.packs : []
     out.actions = Array.isArray(j.actions) ? j.actions : []
     out.extras = Array.isArray(j.extras) ? j.extras : []
   } catch (e) {
@@ -39,8 +39,11 @@ function kindIcon(kind) {
     case "omarchy-add":
     case "omarchy-enable": return "󰍲"  // puzzle
     case "herdr-add": return "󰍲"
-    case "herdr-reload": return "󰑐"    // refresh
-    case "file-link": return "󰆅"       // link
+    case "herdr-reload":
+    case "hypr-reload": return "󰑐"     // refresh
+    case "file-link":
+    case "hypr-snippet":
+    case "hypr-loader": return "󰆅"     // link
     case "skill-link":
     case "command-link": return "󱒱"    // robot
     default:
@@ -51,8 +54,8 @@ function kindIcon(kind) {
 
 function statusLine(plan) {
   if (plan.missing) return "OMASUSHI NOT INSTALLED"
-  if (plan.error) return "PLAN FAILED"
-  if (plan.omakases.length === 0) return "NO OMAKASE IN USE"
+  if (plan.error) return "DIFF FAILED"
+  if (plan.packs.length === 0) return "NO PACK IN USE"
   var n = plan.actions.length
   if (n === 0) return "UP TO DATE"
   return (n + (n === 1 ? " PENDING ACTION" : " PENDING ACTIONS"))

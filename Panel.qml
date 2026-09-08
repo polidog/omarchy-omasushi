@@ -7,7 +7,7 @@ import qs.Commons
 import "Model.js" as Model
 
 // Bar widget for omasushi: a sushi glyph with the number of pending actions,
-// and a panel listing the plan with Apply / Export / Update buttons. Anything
+// and a panel listing the diff with Sync / Export / Update buttons. Anything
 // that installs or pulls runs in a floating terminal, because yay and git
 // may ask questions.
 Panel {
@@ -15,7 +15,7 @@ Panel {
   moduleName: "polidog.omasushi"
   ipcTarget: "polidog.omasushi"
 
-  property var plan: ({ missing: false, error: false, omakases: [], actions: [], extras: [] })
+  property var plan: ({ missing: false, error: false, packs: [], actions: [], extras: [] })
   property bool loading: false
   property int selectedIndex: 0
   property bool cursorActive: false
@@ -23,7 +23,7 @@ Panel {
   readonly property int refreshMs: Math.max(1, setting("refreshMinutes", 10)) * 60000
   readonly property bool hideWhenUpToDate: setting("hideWhenUpToDate", false) === true
   readonly property int pending: plan.actions.length
-  readonly property bool healthy: !plan.missing && !plan.error && plan.omakases.length > 0
+  readonly property bool healthy: !plan.missing && !plan.error && plan.packs.length > 0
   readonly property bool upToDate: healthy && pending === 0
 
   function refresh() {
@@ -33,17 +33,17 @@ Panel {
   }
 
   // Launch an interactive omasushi command in the Omarchy floating terminal
-  // and re-plan once it is gone.
+  // and re-run the diff once it is gone.
   function runInTerminal(sub) {
     termProc.command = ["omarchy-launch-floating-terminal-with-presentation", Model.terminalCommand(sub)]
     termProc.running = true
     close()
   }
 
-  // Open an omakase's omasushi.yaml in the Omarchy default editor. With no
-  // index, the first omakase is used.
+  // Open a pack's omasushi.yaml in the Omarchy default editor. With no
+  // index, the first pack is used.
   function openManifest(index) {
-    var list = plan.omakases
+    var list = plan.packs
     if (list.length === 0) return
     var i = (index === undefined) ? 0 : index
     var dir = list[Math.max(0, Math.min(list.length - 1, i))].dir
@@ -135,12 +135,12 @@ Panel {
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
       }
-      onActivateRequested: if (root.pending > 0) root.runInTerminal("apply")
+      onActivateRequested: if (root.pending > 0) root.runInTerminal("sync")
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "r") root.refresh()
-        else if (t === "a" && root.pending > 0) root.runInTerminal("apply")
+        else if ((t === "s" || t === "a") && root.pending > 0) root.runInTerminal("sync")
         else if (t === "e") root.runInTerminal("export")
         else if (t === "u") root.runInTerminal("update")
         else if (t === "o") root.openManifest()
@@ -181,50 +181,50 @@ Panel {
 
           // ---------- Problems ----------
           Text {
-            visible: root.plan.missing || root.plan.error || root.plan.omakases.length === 0
+            visible: root.plan.missing || root.plan.error || root.plan.packs.length === 0
             width: parent.width
             wrapMode: Text.WordWrap
             text: root.plan.missing
               ? "The omasushi binary is not on PATH. Install it with `go install github.com/polidog/omasushi/cmd/omasushi@latest`."
               : (root.plan.error
-                ? "`omasushi plan --json` failed. Run it in a terminal to see why."
-                : "No omakase in use yet. Run `omasushi use owner/repo` to pick one.")
+                ? "`omasushi diff --json` failed. Run it in a terminal to see why."
+                : "No pack in use yet. Run `omasushi use owner/repo/pack` to take one.")
             color: Qt.darker(root.bar.foreground, 1.4)
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.body
           }
 
-          // ---------- Omakases ----------
+          // ---------- Packs ----------
           PanelSectionHeader {
-            visible: root.plan.omakases.length > 0
+            visible: root.plan.packs.length > 0
             width: parent.width
-            text: "OMAKASES"
+            text: "PACKS"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }
 
           Repeater {
-            model: root.plan.omakases
+            model: root.plan.packs
             delegate: Item {
-              id: omakaseRow
+              id: packRow
               required property var modelData
               required property int index
               width: panelColumn.width
-              implicitHeight: omakaseText.implicitHeight
+              implicitHeight: packText.implicitHeight
 
               Text {
-                id: omakaseText
+                id: packText
                 width: parent.width
-                text: (omakaseRow.modelData.local ? "󰉋 " : "󰊤 ") + omakaseRow.modelData.name + "  " + omakaseRow.modelData.dir
+                text: (packRow.modelData.local ? "󰉋 " : "󰊤 ") + packRow.modelData.name + "  " + packRow.modelData.dir
                 elide: Text.ElideMiddle
-                color: omakaseHover.hovered ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.3)
+                color: packHover.hovered ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.3)
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
-                font.underline: omakaseHover.hovered
+                font.underline: packHover.hovered
               }
 
-              HoverHandler { id: omakaseHover; cursorShape: Qt.PointingHandCursor }
-              TapHandler { onTapped: root.openManifest(omakaseRow.index) }
+              HoverHandler { id: packHover; cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: root.openManifest(packRow.index) }
             }
           }
 
@@ -280,7 +280,7 @@ Panel {
                 }
                 Text {
                   width: parent.width
-                  text: row.modelData.kind + (row.modelData.omakase ? " · " + row.modelData.omakase : "")
+                  text: row.modelData.kind + (row.modelData.pack ? " · " + row.modelData.pack : "")
                   elide: Text.ElideRight
                   color: Qt.darker(root.bar.foreground, 1.6)
                   font.family: root.bar.fontFamily
@@ -298,7 +298,7 @@ Panel {
           PanelSectionHeader {
             visible: root.plan.extras.length > 0
             width: parent.width
-            text: "INSTALLED BUT NOT IN A OMAKASE"
+            text: "INSTALLED BUT NOT IN A PACK"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }
@@ -328,15 +328,15 @@ Panel {
             spacing: Style.space(8)
 
             Button {
-              text: "Apply"
+              text: "Sync"
               iconText: "󰄬"
               bordered: true
               selected: root.pending > 0
               enabled: root.pending > 0
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              tooltipText: "omasushi apply (a)"
-              onClicked: root.runInTerminal("apply")
+              tooltipText: "omasushi sync (s)"
+              onClicked: root.runInTerminal("sync")
             }
             Button {
               text: "Export"
@@ -352,7 +352,7 @@ Panel {
               text: "Edit"
               iconText: "󰏫"
               bordered: true
-              enabled: root.plan.omakases.length > 0
+              enabled: root.plan.packs.length > 0
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
               tooltipText: "Open omasushi.yaml in the default editor (o)"
@@ -372,7 +372,7 @@ Panel {
           Text {
             visible: root.healthy
             width: parent.width
-            text: "j/k navigate · a apply · e export · u update · o open yaml · r refresh"
+            text: "j/k navigate · s sync · e export · u update · o open yaml · r refresh"
             color: Qt.darker(root.bar.foreground, 1.6)
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
